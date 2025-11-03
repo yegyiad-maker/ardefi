@@ -4,14 +4,15 @@
 
 export const DEX_CONFIG = {
   // Factory Contract
-  FACTORY_ADDRESS: "0x10E949cf49a713363aC6158A4f83A897dA004EC7",
+  FACTORY_ADDRESS: "0x34A0b64a88BBd4Bf6Acba8a0Ff8F27c8aDD67E9C",
   
   // Token Addresses (Optional - only if you want to use predefined tokens)
   // Users can use any ERC20 tokens, not just these
+  // Deployed with 10M supply each
   TOKENS: {
-    RAC: "0x12DFE2bD72c55e7D91E0679dA7c9cC5ecB5524E6",
-    RACD: "0xa1456f93C2f36f97497F82cFFBb2EA9C063465D5",
-    RACA: "0xd472F90af8048F1b2Bcd8f22784E900146Cd9eCC",
+    SRAC: "0x49cd69442dB073E7b94B0124e316AB7C68b95988",
+    RACS: "0x6E63e2cABECCe5c3A1c37b79A958a9542076A1e3",
+    SACS: "0x63F856fBAB3535174bFaFD6EFd720C634d6FD458",
   },
   
   // Note: Pools are now fetched dynamically from the factory contract

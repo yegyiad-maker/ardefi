@@ -4,7 +4,7 @@ import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
 import { DEX_CONFIG } from '../config/dex';
 import { ERC20_ABI, POOL_ABI, FACTORY_ABI } from '../config/abis';
 
-export type TokenSymbol = 'RAC' | 'RACD' | 'RACA' | 'USDC';
+export type TokenSymbol = 'SRAC' | 'RACS' | 'SACS' | 'USDC';
 
 export interface TokenInfo {
   symbol: TokenSymbol;
@@ -18,9 +18,9 @@ export interface TokenInfo {
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000' as Address;
 
 export const TOKENS: Record<TokenSymbol, TokenInfo> = {
-  RAC: { symbol: 'RAC', address: DEX_CONFIG.TOKENS.RAC as Address, decimals: 18 },
-  RACD: { symbol: 'RACD', address: DEX_CONFIG.TOKENS.RACD as Address, decimals: 18 },
-  RACA: { symbol: 'RACA', address: DEX_CONFIG.TOKENS.RACA as Address, decimals: 18 },
+  SRAC: { symbol: 'SRAC', address: DEX_CONFIG.TOKENS.SRAC as Address, decimals: 18 },
+  RACS: { symbol: 'RACS', address: DEX_CONFIG.TOKENS.RACS as Address, decimals: 18 },
+  SACS: { symbol: 'SACS', address: DEX_CONFIG.TOKENS.SACS as Address, decimals: 18 },
   USDC: { symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }, // USDC ERC-20 uses 6 decimals
 };
 
@@ -148,10 +148,39 @@ export function useDEX() {
 
     const tokenAInfo = TOKENS[tokenA];
     const tokenBInfo = TOKENS[tokenB];
-    const amountInWei = parseUnits(amountIn, tokenAInfo.decimals);
+    
+    // CRITICAL: Read actual token addresses from pool (pool stores tokens sorted by address)
+    // Pool's tokenA = lower address, tokenB = higher address
+    const [poolTokenA, poolTokenB] = await Promise.all([
+      publicClient.readContract({
+        address: poolAddress,
+        abi: POOL_ABI,
+        functionName: 'tokenA',
+      }),
+      publicClient.readContract({
+        address: poolAddress,
+        abi: POOL_ABI,
+        functionName: 'tokenB',
+      }),
+    ]) as [Address, Address];
 
-    // Determine which swap function to use based on token address order (same as pool stores them)
-    const isTokenAFirst = tokenAInfo.address.toLowerCase() < tokenBInfo.address.toLowerCase();
+    // Determine which swap function to use based on pool's actual token order
+    // Pool.tokenA = lower address, Pool.tokenB = higher address
+    const userTokenAAddr = tokenAInfo.address.toLowerCase();
+    const userTokenBAddr = tokenBInfo.address.toLowerCase();
+    const poolTokenAAddr = (poolTokenA as string).toLowerCase();
+    const poolTokenBAddr = (poolTokenB as string).toLowerCase();
+
+    // Check if user's tokenA matches pool's tokenA or tokenB
+    const isSwappingPoolTokenA = userTokenAAddr === poolTokenAAddr;
+    const isSwappingPoolTokenB = userTokenAAddr === poolTokenBAddr;
+
+    if (!isSwappingPoolTokenA && !isSwappingPoolTokenB) {
+      throw new Error('Token mismatch: Input token does not match pool tokens');
+    }
+
+    // Convert amount to wei using input token decimals
+    const amountInWei = parseUnits(amountIn, tokenAInfo.decimals);
 
     // Verify allowance before swapping
     const currentAllowance = await publicClient.readContract({
@@ -165,9 +194,10 @@ export function useDEX() {
       throw new Error('Insufficient allowance. Please approve first.');
     }
 
-    // Perform swap using the correct function
+    // Perform swap using the correct function based on pool's token order
     try {
-      if (isTokenAFirst) {
+      if (isSwappingPoolTokenA) {
+        // User is swapping pool's tokenA for pool's tokenB
         writeContract({
           address: poolAddress,
           abi: POOL_ABI,
@@ -175,6 +205,7 @@ export function useDEX() {
           args: [amountInWei, 0n, address], // 0 min output, send to user
         });
       } else {
+        // User is swapping pool's tokenB for pool's tokenA
         writeContract({
           address: poolAddress,
           abi: POOL_ABI,
@@ -400,16 +431,65 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
 
 export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | TokenSymbol, amountIn: string) {
   const poolAddress = usePoolAddress(tokenA, tokenB);
+  const publicClient = usePublicClient();
   
-  // Get actual reserves (from ERC20 balances, not stale pool state)
-  const poolReserves = usePoolReserves(tokenA, tokenB);
+  // WORKAROUND: Use contract's stored reserves instead of actual balances
+  // This matches what the contract will actually calculate (even if reserves are stale)
+  // The contract's swap functions use stored reserves, not actual balances
+  const { data: contractReserveA } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'reserveA',
+    query: { enabled: !!poolAddress },
+  });
+
+  const { data: contractReserveB } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'reserveB',
+    query: { enabled: !!poolAddress },
+  });
   
-  // Get token decimals
+  // Read pool's token addresses to map reserves correctly
+  
+  // Get token addresses
   const tokenAAddr: Address | undefined = typeof tokenA === 'string' && isAddress(tokenA)
     ? tokenA
     : typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
     ? TOKENS[tokenA as TokenSymbol].address
     : undefined;
+
+  const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
+    ? tokenB
+    : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
+    ? TOKENS[tokenB as TokenSymbol].address
+    : undefined;
+
+  // CRITICAL: Read pool's actual tokenA and tokenB to match reserves correctly
+  const { data: poolTokenA } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'tokenA',
+    query: { enabled: !!poolAddress },
+  });
+
+  const { data: poolTokenB } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'tokenB',
+    query: { enabled: !!poolAddress },
+  });
+
+  // Get decimals for pool tokens to format contract reserves
+  const poolTokenAInfo = poolTokenA ? Object.values(TOKENS).find(t => 
+    t.address.toLowerCase() === (poolTokenA as string).toLowerCase()
+  ) : null;
+  const poolTokenBInfo = poolTokenB ? Object.values(TOKENS).find(t => 
+    t.address.toLowerCase() === (poolTokenB as string).toLowerCase()
+  ) : null;
+
+  const poolTokenADecimals = poolTokenAInfo?.decimals ?? 18;
+  const poolTokenBDecimals = poolTokenBInfo?.decimals ?? 18;
 
   const tokenADecimals = typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
     ? TOKENS[tokenA as TokenSymbol].decimals
@@ -419,39 +499,37 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     ? parseFloat(amountIn)
     : 0;
 
-  // Determine if we're swapping tokenA (true) or tokenB (false)
-  const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
-    ? tokenB
-    : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
-    ? TOKENS[tokenB as TokenSymbol].address
-    : undefined;
-    
-  const isTokenAFirst = tokenAAddr && tokenBAddr
-    ? tokenAAddr.toLowerCase() < tokenBAddr.toLowerCase()
-    : false;
-
   // Get decimals for output token
   const tokenBDecimals = typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
     ? TOKENS[tokenB as TokenSymbol].decimals
     : 18;
 
-  // Calculate swap output using actual reserves (Uniswap V2 formula)
-  // Formula: amountOut = (amountIn * 9970 * reserveOut) / (reserveIn * 10000 + amountIn * 9970)
+  // CRITICAL: Determine which reserve is input and which is output based on pool's actual token order
+  // poolReserves.reserveA corresponds to pool's tokenA, reserveB to pool's tokenB
+  const isSwappingPoolTokenA = useMemo(() => {
+    if (!tokenAAddr || !poolTokenA) return false;
+    return (tokenAAddr as string).toLowerCase() === (poolTokenA as string).toLowerCase();
+  }, [tokenAAddr, poolTokenA]);
+
+  // CRITICAL: Use contract's stored reserves (what contract will actually use)
+  // Not actual ERC20 balances, because contract's swap uses stored reserves!
   const calculatedAmountOut = useMemo(() => {
-    if (!amountInValue || amountInValue <= 0 || !poolReserves.reserveA || !poolReserves.reserveB) {
+    if (!amountInValue || amountInValue <= 0 || !contractReserveA || !contractReserveB || !poolTokenA || !poolTokenB) {
       return '0';
     }
 
-    const reserveA = parseFloat(poolReserves.reserveA);
-    const reserveB = parseFloat(poolReserves.reserveB);
+    // Contract reserves are in raw wei format - need to format them
+    const reserveA = parseFloat(formatUnits(contractReserveA, poolTokenADecimals));
+    const reserveB = parseFloat(formatUnits(contractReserveB, poolTokenBDecimals));
     
     if (reserveA <= 0 || reserveB <= 0) {
       return '0';
     }
 
-    // Determine which reserve is input and which is output
-    const reserveIn = isTokenAFirst ? reserveA : reserveB;
-    const reserveOut = isTokenAFirst ? reserveB : reserveA;
+    // CRITICAL: Match reserves to pool's token order, not user's input order
+    // Contract's reserveA = pool's tokenA, reserveB = pool's tokenB
+    const reserveIn = isSwappingPoolTokenA ? reserveA : reserveB;
+    const reserveOut = isSwappingPoolTokenA ? reserveB : reserveA;
 
     // Uniswap V2 formula with 0.3% fee (30 bps = 9970/10000)
     const FEE_BPS = 30; // 0.3%
@@ -461,7 +539,7 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     const amountOut = numerator / denominator;
 
     return amountOut.toFixed(18); // Return as string with enough precision
-  }, [amountInValue, poolReserves.reserveA, poolReserves.reserveB, isTokenAFirst, tokenA, tokenB, poolAddress]);
+  }, [amountInValue, contractReserveA, contractReserveB, isSwappingPoolTokenA, poolTokenA, poolTokenB, poolTokenADecimals, poolTokenBDecimals, poolAddress]);
 
   return calculatedAmountOut;
 }

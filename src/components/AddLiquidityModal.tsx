@@ -34,6 +34,7 @@ export default function AddLiquidityModal({
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liquiditySuccess, setLiquiditySuccess] = useState(false);
+  const [modalManuallyClosed, setModalManuallyClosed] = useState(false);
 
   // Get token symbols (convert addresses to symbols if needed)
   const tokenAInfo = useMemo(() => {
@@ -124,10 +125,13 @@ export default function AddLiquidityModal({
   }, [poolReserves]);
 
   // Calculate current price from reserves (only if pool has liquidity)
+  // Price shows: 1 tokenA = X tokenB (how many tokenB per tokenA)
   const currentPrice = useMemo(() => {
     if (isFirstLiquidity) return null; // No price for new pools
-    if (!poolReserves.reserveA || !poolReserves.reserveB || parseFloat(poolReserves.reserveB) <= 0) return null;
-    return parseFloat(poolReserves.reserveA) / parseFloat(poolReserves.reserveB);
+    if (!poolReserves.reserveA || !poolReserves.reserveB || parseFloat(poolReserves.reserveA) <= 0) return null;
+    // ReserveA = tokenA, ReserveB = tokenB
+    // Price = reserveB / reserveA (how many tokenB per tokenA)
+    return parseFloat(poolReserves.reserveB) / parseFloat(poolReserves.reserveA);
   }, [poolReserves, isFirstLiquidity]);
 
   // Calculate starting price from user inputs (for new pools)
@@ -144,7 +148,8 @@ export default function AddLiquidityModal({
       return;
     }
     if (amountA && currentPrice && parseFloat(amountA) > 0) {
-      const calculatedB = (parseFloat(amountA) / currentPrice).toFixed(6);
+      // If 1 tokenA = currentPrice tokenB, then amountA tokenA = amountA * currentPrice tokenB
+      const calculatedB = (parseFloat(amountA) * currentPrice).toFixed(6);
       setAmountB(calculatedB);
     } else if (!amountA) {
       setAmountB('');
@@ -173,6 +178,16 @@ export default function AddLiquidityModal({
 
   // Track progress
   useEffect(() => {
+    // Don't reopen modal if it was manually closed after completion
+    if (modalManuallyClosed && liquiditySuccess) {
+      return;
+    }
+    
+    // Reset manual close flag when new transaction starts
+    if (isPending || isConfirming) {
+      setModalManuallyClosed(false);
+    }
+    
     if (isPending || isConfirming) {
       // Keep progress modal open when transaction is in progress
       if (!showProgressModal) {
@@ -183,17 +198,21 @@ export default function AddLiquidityModal({
       if (approvalStep === 'adding') {
         // Only process if we haven't already handled this success
         setLiquiditySuccess(true);
+        // Don't auto-close, let user close manually or after delay
         setTimeout(() => {
-          setShowProgressModal(false);
-          setApprovalStep('none');
-          setLiquiditySuccess(false);
-          setCompletedApprovalStep('none');
-          // Reset and close after a delay
-          setTimeout(() => {
-            setAmountA('');
-            setAmountB('');
-            onClose();
-          }, 2000);
+          // Only auto-close if user hasn't manually closed
+          if (showProgressModal && !modalManuallyClosed) {
+            setShowProgressModal(false);
+            setApprovalStep('none');
+            setLiquiditySuccess(false);
+            setCompletedApprovalStep('none');
+            // Reset and close after a delay
+            setTimeout(() => {
+              setAmountA('');
+              setAmountB('');
+              onClose();
+            }, 2000);
+          }
         }, 2500);
       }
       // For approvals (approvingA or approvingB), DON'T close modal - let auto-proceed handle it
@@ -202,9 +221,11 @@ export default function AddLiquidityModal({
       // Only show error modal for liquidity addition errors, not approval errors
       setErrorMessage(formatErrorMessage(error));
       setTimeout(() => {
-        setShowProgressModal(false);
-        setApprovalStep('none');
-        setCompletedApprovalStep('none');
+        if (!modalManuallyClosed) {
+          setShowProgressModal(false);
+          setApprovalStep('none');
+          setCompletedApprovalStep('none');
+        }
       }, 3000);
     } else if (error && (approvalStep === 'approvingA' || approvalStep === 'approvingB')) {
       // Handle approval errors - keep modal open so user can see error
@@ -216,11 +237,11 @@ export default function AddLiquidityModal({
     } else if (!isPending && !isConfirming && !isSuccess && (approvalStep === 'approvingA' || approvalStep === 'approvingB')) {
       // If we're in approval state but no transaction is active, keep modal open
       // This prevents premature closing during approval->liquidity transition
-      if (!showProgressModal) {
+      if (!showProgressModal && !modalManuallyClosed) {
         setShowProgressModal(true);
       }
     }
-  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose]);
+  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose, liquiditySuccess, modalManuallyClosed]);
 
   // Track which approval just completed to prevent duplicate triggers
   const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
@@ -301,7 +322,6 @@ export default function AddLiquidityModal({
             }
           }
         } catch (err: any) {
-          console.error('Error proceeding after approval:', err);
           const errorMsg = err?.message || err?.toString() || '';
           
           // Handle approval errors that might occur during auto-proceed
@@ -435,8 +455,6 @@ export default function AddLiquidityModal({
       setApprovalStep('adding');
       await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
     } catch (err: any) {
-      console.error('Add liquidity error:', err);
-      const errorMsg = err.message || err.toString() || '';
       setErrorMessage(formatErrorMessage(err));
       setShowProgressModal(false);
       setApprovalStep('none');
@@ -690,7 +708,7 @@ export default function AddLiquidityModal({
 
           {/* Progress Modal */}
           <AnimatePresence>
-            {showProgressModal && (
+            {showProgressModal && !modalManuallyClosed && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -698,9 +716,18 @@ export default function AddLiquidityModal({
                 className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Don't close modal if transaction is in progress OR if we're in the middle of approvals/liquidity flow
-                  if (!isPending && !isConfirming && approvalStep === 'none' && !liquiditySuccess) {
+                  // Don't close modal if transaction is in progress
+                  // Allow closing if process is complete (liquiditySuccess) or no active transactions
+                  const canClose = liquiditySuccess || 
+                    (!isPending && !isConfirming && 
+                     (approvalStep === 'none' || (isSuccess && approvalStep === 'adding')));
+                  if (canClose) {
                     setShowProgressModal(false);
+                    setApprovalStep('none');
+                    setLiquiditySuccess(false);
+                    setErrorMessage(null);
+                    setCompletedApprovalStep('none');
+                    setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
                   }
                 }}
               >
@@ -709,7 +736,7 @@ export default function AddLiquidityModal({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative min-h-[200px]"
                 style={{
                   boxShadow: `
                     0 0 30px rgba(251, 146, 60, 0.25),
@@ -720,11 +747,32 @@ export default function AddLiquidityModal({
                   `
                 }}
                 >
-                  <div className="flex items-center justify-end mb-4">
-                    {!isPending && !isConfirming && approvalStep === 'none' && !liquiditySuccess && (
+                  <div className="flex items-center justify-end mb-6">
+                    {/* Show close button when:
+                        1. Liquidity was successfully added (liquiditySuccess is true)
+                        2. OR transaction succeeded and we're at adding step (all done)
+                        3. OR no transactions are in progress and not waiting for approvals
+                    */}
+                    {(liquiditySuccess || 
+                      (isSuccess && approvalStep === 'adding' && !isPending && !isConfirming) ||
+                      (!isPending && !isConfirming && approvalStep === 'none')) && (
                       <button
-                        onClick={() => setShowProgressModal(false)}
+                        onClick={() => {
+                          setShowProgressModal(false);
+                          setApprovalStep('none');
+                          setLiquiditySuccess(false);
+                          setErrorMessage(null);
+                          setCompletedApprovalStep('none');
+                          setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
+                          // Close the main modal after progress modal closes
+                          setTimeout(() => {
+                            setAmountA('');
+                            setAmountB('');
+                            onClose();
+                          }, 300);
+                        }}
                         className="text-gray-400 hover:text-gray-600 transition-colors"
+                        aria-label="Close"
                       >
                         <X className="w-5 h-5" />
                       </button>

@@ -180,64 +180,9 @@ export default function Pools() {
         }
       }
 
-      // Filter out pools with zero liquidity
-      // IMPORTANT: Read actual token balances from ERC20 contracts, not stored reserves
-      // This matches the indexer's approach and ensures we get the real on-chain state
-      // ALSO check LP supply - if 0, all liquidity has been removed (even if tokens are trapped)
-      const poolsWithLiquidity = [];
-      for (const pool of poolList) {
-        try {
-          // Read actual token balances from ERC20 contracts (source of truth)
-          // Also check total LP supply - if 0, all LP has been removed
-          const [reserveA, reserveB, totalSupply] = await Promise.all([
-            publicClient.readContract({
-              address: pool.tokenA,
-              abi: ERC20_ABI,
-              functionName: 'balanceOf',
-              args: [pool.poolAddress], // Pool's balance of tokenA
-            }),
-            publicClient.readContract({
-              address: pool.tokenB,
-              abi: ERC20_ABI,
-              functionName: 'balanceOf',
-              args: [pool.poolAddress], // Pool's balance of tokenB
-            }),
-            publicClient.readContract({
-              address: pool.poolAddress,
-              abi: POOL_ABI,
-              functionName: 'totalSupply',
-            }),
-          ]);
-
-          const tokenADecimals = Object.entries(TOKENS).find(([_, info]) => 
-            info.address.toLowerCase() === pool.tokenA.toLowerCase()
-          )?.[1]?.decimals || 18;
-
-          const tokenBDecimals = Object.entries(TOKENS).find(([_, info]) => 
-            info.address.toLowerCase() === pool.tokenB.toLowerCase()
-          )?.[1]?.decimals || 18;
-
-          const reserveAStr = formatUnits(reserveA as bigint, tokenADecimals);
-          const reserveBStr = formatUnits(reserveB as bigint, tokenBDecimals);
-          const totalSupplyStr = formatUnits(totalSupply as bigint, 18);
-
-          const reserveAValue = parseFloat(reserveAStr);
-          const reserveBValue = parseFloat(reserveBStr);
-          const totalSupplyValue = parseFloat(totalSupplyStr);
-
-          // Only include pools with liquidity:
-          // 1. Both reserves must be > threshold
-          // 2. LP supply must be > 0 (if 0, all LP has been removed even if tokens are trapped)
-          if (reserveAValue > 0.000001 && reserveBValue > 0.000001 && totalSupplyValue > 0.000001) {
-            poolsWithLiquidity.push(pool);
-          }
-        } catch (error) {
-          console.error(`Error checking liquidity for pool ${pool.poolAddress}:`, error);
-          // Don't include pool if we can't check - assume it has no liquidity
-        }
-      }
-
-      setPools(poolsWithLiquidity);
+      // Include all pools, regardless of liquidity
+      // Users can see and interact with pools even if they have zero liquidity
+      setPools(poolList);
       // Clear any old cache - we don't use caching anymore to ensure fresh data
       clearCache();
       setIsLoading(false);
@@ -1074,18 +1019,8 @@ function PoolCard({
   const totalSupplyStr = totalSupply ? formatUnits(totalSupply, 18) : '0';
   const hasPosition = parseFloat(lpBalanceStr) > 0;
 
-  // IMPORTANT: Hide pools with zero liquidity (check both reserves AND LP supply)
-  // If LP supply is 0, all liquidity has been removed even if tokens are trapped
-  const reserveAValue = parseFloat(reserveAStr);
-  const reserveBValue = parseFloat(reserveBStr);
-  const totalSupplyValue = parseFloat(totalSupplyStr);
-  
-  // Hide if:
-  // 1. Reserves are zero, OR
-  // 2. LP supply is zero (all LP removed, tokens may be trapped)
-  if (reserveAValue <= 0.000001 || reserveBValue <= 0.000001 || totalSupplyValue <= 0.000001) {
-    return null; // Don't render pools with zero liquidity or zero LP supply
-  }
+  // Show all pools, even those with zero liquidity
+  // This allows users to add liquidity to empty pools
 
   // Hide if filtering by "my-pools" and user has no position
   if (filterOption === 'my-pools' && (!hasPosition || !isConnected || !isArcTestnet)) {
@@ -1185,27 +1120,44 @@ function PoolCard({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs sm:text-sm font-medium hover:bg-gray-200 transition-all flex items-center gap-1"
+              className="p-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center"
+              aria-label="View on explorer"
             >
-              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Explorer</span>
+              <ExternalLink className="w-4 h-4" />
             </a>
             {hasPosition ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveClick({
-                    poolAddress: pool.poolAddress,
-                    tokenA: pool.tokenA,
-                    tokenB: pool.tokenB,
-                    tokenASymbol: pool.tokenASymbol,
-                    tokenBSymbol: pool.tokenBSymbol,
-                  });
-                }}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-red-600 hover:shadow-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-              >
-                Remove
-              </button>
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddClick({
+                      poolAddress: pool.poolAddress,
+                      tokenA: pool.tokenA,
+                      tokenB: pool.tokenB,
+                      tokenASymbol: pool.tokenASymbol,
+                      tokenBSymbol: pool.tokenBSymbol,
+                    });
+                  }}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-orange-500 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-orange-600 hover:shadow-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveClick({
+                      poolAddress: pool.poolAddress,
+                      tokenA: pool.tokenA,
+                      tokenB: pool.tokenB,
+                      tokenASymbol: pool.tokenASymbol,
+                      tokenBSymbol: pool.tokenBSymbol,
+                    });
+                  }}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-red-600 hover:shadow-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                  Remove
+                </button>
+              </>
             ) : (
               <button
                 onClick={(e) => {

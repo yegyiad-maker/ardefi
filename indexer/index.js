@@ -18,7 +18,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 // DEX Configuration
 const DEX_CONFIG = {
-  FACTORY_ADDRESS: "0x10E949cf49a713363aC6158A4f83A897dA004EC7",
+  FACTORY_ADDRESS: "0x34A0b64a88BBd4Bf6Acba8a0Ff8F27c8aDD67E9C",
   CHAIN_ID: 5042002,
   EXPLORER_URL: "https://testnet.arcscan.app",
 };
@@ -112,9 +112,11 @@ const ERC20_ABI = [
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000'; // Arc Testnet USDC
 const KNOWN_TOKENS = {
   '0x3600000000000000000000000000000000000000': { symbol: 'USDC', decimals: 6 },
-  '0x12dfe2bd72c55e7d91e0679da7c9cc5ecb5524e6': { symbol: 'RAC', decimals: 18 },
-  '0xa1456f93c2f36f97497f82cffbb2eac063465d5': { symbol: 'RACD', decimals: 18 },
-  '0xd472f90af8048f1b2bcd8f22784e900146cd9ecc': { symbol: 'RACA', decimals: 18 },
+  '0x49cd69442dB073E7b94B0124e316AB7C68b95988': { symbol: 'SRAC', decimals: 18 },
+  '0x6E63e2cABECCe5c3A1c37b79A958a9542076A1e3': { symbol: 'RACS', decimals: 18 },
+  '0x63F856fBAB3535174bFaFD6EFd720C634d6FD458': { symbol: 'SACS', decimals: 18 },
+  // Old tokens (for backwards compatibility)
+  
 };
 
 // Environment variables

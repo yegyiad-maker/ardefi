@@ -8,7 +8,7 @@ import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 import { useDEX, useTokenBalance, usePoolReserves, TOKENS, type TokenSymbol, getPoolAddress } from '../hooks/useDEX';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
+const AVAILABLE_TOKENS: TokenSymbol[] = ['SRAC', 'RACS', 'SACS', 'USDC'];
 
 // Allowed wallet addresses for pool creation
 const ALLOWED_WALLETS = [
@@ -81,24 +81,24 @@ export default function CreatePool() {
   };
 
   // Fetch balances for all tokens when dropdown is open
-  const { data: balanceRAC } = useReadContract({
-    address: TOKENS.RAC.address as Address,
+  const { data: balanceSRAC } = useReadContract({
+    address: TOKENS.SRAC.address as Address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: { enabled: !!address && isConnected && isArcTestnet },
   });
 
-  const { data: balanceRACD } = useReadContract({
-    address: TOKENS.RACD.address as Address,
+  const { data: balanceRACS } = useReadContract({
+    address: TOKENS.RACS.address as Address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: { enabled: !!address && isConnected && isArcTestnet },
   });
 
-  const { data: balanceRACA } = useReadContract({
-    address: TOKENS.RACA.address as Address,
+  const { data: balanceSACS } = useReadContract({
+    address: TOKENS.SACS.address as Address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
@@ -117,14 +117,14 @@ export default function CreatePool() {
   const getTokenBalance = (tokenSymbol: TokenSymbol): string => {
     let balance: bigint | undefined;
     switch (tokenSymbol) {
-      case 'RAC':
-        balance = balanceRAC;
+      case 'SRAC':
+        balance = balanceSRAC;
         break;
-      case 'RACD':
-        balance = balanceRACD;
+      case 'RACS':
+        balance = balanceRACS;
         break;
-      case 'RACA':
-        balance = balanceRACA;
+      case 'SACS':
+        balance = balanceSACS;
         break;
       case 'USDC':
         balance = balanceUSDC;
@@ -278,6 +278,9 @@ export default function CreatePool() {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [liquiditySuccess, setLiquiditySuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
+  const [hasStartedPostCreationFlow, setHasStartedPostCreationFlow] = useState(false);
+  const [modalManuallyClosed, setModalManuallyClosed] = useState(false);
 
   const handleContinueToAmounts = () => {
     // Check authorization before proceeding
@@ -452,30 +455,50 @@ export default function CreatePool() {
     }
   };
 
-  // Track transaction progress
+  // Track transaction progress - KEEP MODAL OPEN during entire flow
   useEffect(() => {
-    if (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) {
+    // Don't reopen modal if it was manually closed after completion
+    if (modalManuallyClosed && liquiditySuccess) {
+      return;
+    }
+    
+    // Reset manual close flag when new transaction starts
+    if (isCreating || isConfirmingCreate) {
+      setModalManuallyClosed(false);
+    }
+    
+    // Open modal if any transaction is in progress OR pool was just created (waiting for approvals/liquidity)
+    // BUT only if we're not already in success state
+    const hasActiveTransaction = isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate;
+    const shouldKeepOpenForFlow = poolCreated && !liquiditySuccess && approvalStep !== 'none' && !modalManuallyClosed;
+    
+    if (hasActiveTransaction || shouldKeepOpenForFlow) {
       if (!showProgressModal) {
         setShowProgressModal(true);
       }
     } else if (transactionSuccess && approvalStep === 'adding') {
-      // Only show success for liquidity addition, not for approvals
+      // Only close modal when liquidity addition is fully complete
       setLiquiditySuccess(true);
+      // Don't auto-close, let user close manually or after delay
       setTimeout(() => {
-        setShowProgressModal(false);
-        setApprovalStep('none');
-        setLiquiditySuccess(false);
-        setAmountA('');
-        setAmountB('');
-        setCompletedApprovalStep('none');
+        // Only auto-close if user hasn't manually closed
+        if (showProgressModal && !modalManuallyClosed) {
+          setShowProgressModal(false);
+          setApprovalStep('none');
+          setLiquiditySuccess(false);
+          setAmountA('');
+          setAmountB('');
+          setCompletedApprovalStep('none');
+          setHasStartedPostCreationFlow(false);
+        }
       }, 2500);
     } else if (liquidityError || writeError) {
       const errorMsg = liquidityError?.message || writeError?.message || '';
       if (errorMsg.includes('NEED_APPROVE')) {
-        // Will be handled in handleCreatePool catch block or auto-proceed logic
+        // Keep modal open - approvals will be handled
         return;
       }
-      // Only show error for liquidity addition errors, not approval errors
+      // Only show error and close modal for actual errors, not approval needs
       if (approvalStep === 'adding') {
         setError(formatErrorMessage(liquidityError || writeError));
         setErrorMessage(formatErrorMessage(liquidityError || writeError));
@@ -485,10 +508,7 @@ export default function CreatePool() {
         }, 3000);
       }
     }
-  }, [isAddingLiquidity, isConfirmingLiquidity, isCreating, isConfirmingCreate, transactionSuccess, liquidityError, writeError, approvalStep, showProgressModal]);
-
-  // Track which approval just completed to prevent duplicate triggers
-  const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
+  }, [isAddingLiquidity, isConfirmingLiquidity, isCreating, isConfirmingCreate, transactionSuccess, liquidityError, writeError, approvalStep, showProgressModal, poolCreated, liquiditySuccess, modalManuallyClosed]);
 
   // Auto-proceed after approval completes
   useEffect(() => {
@@ -609,16 +629,32 @@ export default function CreatePool() {
     }
   }, [transactionSuccess, approvalStep, poolReserves.poolAddress, tokenASymbolKey, tokenBSymbolKey, amountA, amountB, addLiquidity, approveToken, isAddingLiquidity, isConfirmingLiquidity, completedApprovalStep, showProgressModal, existingPool, publicClient, tokenA, tokenB, address, getPoolAddress]);
 
-  // Auto-add liquidity after pool is created
+  // Auto-add liquidity after pool is created - IMPROVED FLOW
   useEffect(() => {
-    if (poolCreated && !poolExists && amountA && amountB && parseFloat(amountA) > 0 && parseFloat(amountB) > 0 && tokenASymbolKey && tokenBSymbolKey && showProgressModal && publicClient) {
-      // Wait a bit for pool to be ready, then try to add liquidity
+    // Only trigger once after pool is created
+    if (
+      poolCreated && 
+      !hasStartedPostCreationFlow && // Prevent duplicate triggers
+      !poolExists && // Only for new pools
+      amountA && 
+      amountB && 
+      parseFloat(amountA) > 0 && 
+      parseFloat(amountB) > 0 && 
+      tokenASymbolKey && 
+      tokenBSymbolKey && 
+      publicClient &&
+      address &&
+      showProgressModal // Ensure modal is open
+    ) {
+      // Mark that we've started the flow
+      setHasStartedPostCreationFlow(true);
+      
+      // Wait a bit for pool to be ready, then check approvals and add liquidity
       setTimeout(async () => {
         try {
-          // Fetch pool address directly from factory since reactive state might not be updated yet
+          // Fetch pool address - try multiple ways
           let poolAddr: Address | null = null;
           
-          // Try to get pool address
           if (poolReserves.poolAddress && poolReserves.poolAddress !== '0x0000000000000000000000000000000000000000') {
             poolAddr = poolReserves.poolAddress;
           } else if (existingPool && existingPool !== '0x0000000000000000000000000000000000000000') {
@@ -633,21 +669,61 @@ export default function CreatePool() {
             setError('Pool address not found. Please try adding liquidity manually.');
             setShowProgressModal(false);
             setApprovalStep('none');
+            setHasStartedPostCreationFlow(false);
             return;
           }
-          
-          setApprovalStep('adding');
-          await addLiquidity(
-            tokenASymbolKey as TokenSymbol,
-            tokenBSymbolKey as TokenSymbol,
-            amountA,
-            amountB
-          );
+
+          const tokenAInfo = TOKENS[tokenASymbolKey as TokenSymbol];
+          const tokenBInfo = TOKENS[tokenBSymbolKey as TokenSymbol];
+          const amountAWei = parseUnits(amountA, tokenAInfo.decimals);
+          const amountBWei = parseUnits(amountB, tokenBInfo.decimals);
+
+          // IMPORTANT: Check allowances BEFORE attempting to add liquidity
+          const [allowanceA, allowanceB] = await Promise.all([
+            publicClient.readContract({
+              address: tokenAInfo.address,
+              abi: ERC20_ABI,
+              functionName: 'allowance',
+              args: [address, poolAddr],
+            }),
+            publicClient.readContract({
+              address: tokenBInfo.address,
+              abi: ERC20_ABI,
+              functionName: 'allowance',
+              args: [address, poolAddr],
+            }),
+          ]);
+
+          // Determine what needs to be done based on allowances
+          if (allowanceA < amountAWei && allowanceB < amountBWei) {
+            // Need both approvals - start with A
+            setApprovalStep('approvingA');
+            approveToken(tokenASymbolKey as TokenSymbol, poolAddr);
+            // Token B approval will be handled in the auto-proceed effect after A completes
+          } else if (allowanceA < amountAWei) {
+            // Only need A approval
+            setApprovalStep('approvingA');
+            approveToken(tokenASymbolKey as TokenSymbol, poolAddr);
+          } else if (allowanceB < amountBWei) {
+            // Only need B approval
+            setApprovalStep('approvingB');
+            approveToken(tokenBSymbolKey as TokenSymbol, poolAddr);
+          } else {
+            // Both approved, proceed directly to add liquidity
+            setApprovalStep('adding');
+            await addLiquidity(
+              tokenASymbolKey as TokenSymbol,
+              tokenBSymbolKey as TokenSymbol,
+              amountA,
+              amountB
+            );
+          }
         } catch (err: any) {
-          console.error('Error adding liquidity after pool creation:', err);
+          console.error('Error in post-creation flow:', err);
           const errorMsg = err.message || err.toString() || '';
+          
+          // Handle approval errors
           if (errorMsg.includes('NEED_APPROVE_A')) {
-            // Fetch pool address if not available
             let poolAddr: Address | null = null;
             if (poolReserves.poolAddress && poolReserves.poolAddress !== '0x0000000000000000000000000000000000000000') {
               poolAddr = poolReserves.poolAddress;
@@ -664,9 +740,9 @@ export default function CreatePool() {
               setError('Pool address not found. Please try adding liquidity manually.');
               setShowProgressModal(false);
               setApprovalStep('none');
+              setHasStartedPostCreationFlow(false);
             }
           } else if (errorMsg.includes('NEED_APPROVE_B')) {
-            // Fetch pool address if not available
             let poolAddr: Address | null = null;
             if (poolReserves.poolAddress && poolReserves.poolAddress !== '0x0000000000000000000000000000000000000000') {
               poolAddr = poolReserves.poolAddress;
@@ -683,16 +759,18 @@ export default function CreatePool() {
               setError('Pool address not found. Please try adding liquidity manually.');
               setShowProgressModal(false);
               setApprovalStep('none');
+              setHasStartedPostCreationFlow(false);
             }
           } else {
             setError(formatErrorMessage(err));
             setShowProgressModal(false);
             setApprovalStep('none');
+            setHasStartedPostCreationFlow(false);
           }
         }
-      }, 3000); // Increased delay to ensure pool is fully ready
+      }, 2000); // Wait 2 seconds for pool to be fully ready
     }
-  }, [poolCreated, poolExists, amountA, amountB, tokenASymbolKey, tokenBSymbolKey, addLiquidity, approveToken, showProgressModal, poolReserves.poolAddress, existingPool, publicClient, tokenA, tokenB, getPoolAddress]);
+  }, [poolCreated, hasStartedPostCreationFlow, poolExists, amountA, amountB, tokenASymbolKey, tokenBSymbolKey, addLiquidity, approveToken, showProgressModal, poolReserves.poolAddress, existingPool, publicClient, tokenA, tokenB, address, getPoolAddress]);
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4">
@@ -1270,7 +1348,7 @@ export default function CreatePool() {
 
         {/* Progress Modal */}
         <AnimatePresence>
-          {showProgressModal && (
+          {showProgressModal && !modalManuallyClosed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1279,8 +1357,18 @@ export default function CreatePool() {
               onClick={(e) => {
                 e.stopPropagation();
                 // Don't close modal if transaction is in progress
-                if (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && approvalStep === 'none') {
+                // Allow closing if process is complete (liquiditySuccess) or no active transactions
+                const canClose = liquiditySuccess || 
+                  (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && 
+                   (approvalStep === 'none' || (transactionSuccess && approvalStep === 'adding')));
+                if (canClose) {
                   setShowProgressModal(false);
+                  setApprovalStep('none');
+                  setLiquiditySuccess(false);
+                  setErrorMessage(null);
+                  setHasStartedPostCreationFlow(false);
+                  setCompletedApprovalStep('none');
+                  setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
                 }
               }}
             >
@@ -1289,7 +1377,7 @@ export default function CreatePool() {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative min-h-[200px]"
                 style={{
                   boxShadow: `
                     0 0 30px rgba(251, 146, 60, 0.25),
@@ -1301,10 +1389,28 @@ export default function CreatePool() {
                 }}
               >
                 <div className="flex items-center justify-end mb-6">
-                  {!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && approvalStep === 'none' && (
+                  {/* Show close button when:
+                      1. Liquidity was successfully added (liquiditySuccess is true)
+                      2. OR transaction succeeded and we're at adding step (all done)
+                      3. OR no transactions are in progress and not waiting for approvals
+                  */}
+                  {(liquiditySuccess || 
+                    (transactionSuccess && approvalStep === 'adding' && !isAddingLiquidity && !isConfirmingLiquidity) ||
+                    (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && !poolCreated && approvalStep === 'none')) && (
                     <button
-                      onClick={() => setShowProgressModal(false)}
+                      onClick={() => {
+                        setShowProgressModal(false);
+                        setApprovalStep('none');
+                        setLiquiditySuccess(false);
+                        setErrorMessage(null);
+                        setHasStartedPostCreationFlow(false);
+                        setCompletedApprovalStep('none');
+                        setAmountA('');
+                        setAmountB('');
+                        setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
+                      }}
                       className="text-gray-400 hover:text-gray-600 transition-colors"
+                      aria-label="Close"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -1312,8 +1418,9 @@ export default function CreatePool() {
                 </div>
 
                 <div className="space-y-3">
+                  {/* Show steps only if there's content to display */}
                   {/* Step 1: Create Pool (if creating new pool) */}
-                  {!poolExists && (isCreating || isConfirmingCreate || poolCreated || approvalStep !== 'none') && (
+                  {(!poolExists && (isCreating || isConfirmingCreate || poolCreated || approvalStep !== 'none')) && (
                     <div className="flex items-center gap-3">
                       <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
                         isCreating || isConfirmingCreate

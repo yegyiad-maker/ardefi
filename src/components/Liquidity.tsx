@@ -8,12 +8,12 @@ import { ERC20_ABI, FACTORY_ABI, POOL_ABI } from '../config/abis';
 import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
+const AVAILABLE_TOKENS: TokenSymbol[] = ['SRAC', 'RACS', 'SACS', 'USDC'];
 
 export default function Liquidity() {
   const { isConnected, address, chainId } = useAccount();
-  const [tokenA, setTokenA] = useState<TokenSymbol>('RAC');
-  const [tokenB, setTokenB] = useState<TokenSymbol>('RACD');
+  const [tokenA, setTokenA] = useState<TokenSymbol>('SRAC');
+  const [tokenB, setTokenB] = useState<TokenSymbol>('RACS');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [lpAmount, setLpAmount] = useState('');

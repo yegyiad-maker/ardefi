@@ -95,6 +95,11 @@ export default function PriceChart({
           },
           rightPriceScale: {
             borderColor: '#d1d4dc',
+            scaleMargins: {
+              top: 0.1,
+              bottom: 0.1,
+            },
+            autoScale: true,
           },
           timeScale: {
             borderColor: '#d1d4dc',
@@ -109,6 +114,11 @@ export default function PriceChart({
           topColor: 'rgba(251, 146, 60, 0.28)',
           bottomColor: 'rgba(251, 146, 60, 0.05)',
           lineWidth: 2,
+          priceFormat: {
+            type: 'price',
+            precision: 4,
+            minMove: 0.0001,
+          },
         });
 
         chartRef.current = chart;

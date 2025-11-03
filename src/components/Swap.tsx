@@ -10,14 +10,14 @@ import TokenLogo from './TokenLogo';
 import { addArcTestnetToWallet } from '../utils/addArcTestnet';
 import PriceChart from './PriceChart';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
+const AVAILABLE_TOKENS: TokenSymbol[] = ['SRAC', 'RACS', 'SACS', 'USDC'];
 
 export default function Swap() {
   const { isConnected, address, chainId } = useAccount();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [fromToken, setFromToken] = useState<TokenSymbol>('USDC');
-  const [toToken, setToToken] = useState<TokenSymbol>('RACA');
+  const [toToken, setToToken] = useState<TokenSymbol>('SRAC');
   const [slippage, setSlippage] = useState('0.5');
   const [showSettings, setShowSettings] = useState(false);
   const [showTokenSelector, setShowTokenSelector] = useState<'from' | 'to' | null>(null);

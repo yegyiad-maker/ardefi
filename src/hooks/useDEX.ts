@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
 import { DEX_CONFIG } from '../config/dex';
@@ -99,7 +99,6 @@ export async function getPoolAddress(
       ? poolAddress 
       : null;
   } catch (error) {
-    console.error('Error fetching pool address:', error);
     return null;
   }
 }
@@ -323,70 +322,87 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
   const poolAddress = usePoolAddress(tokenA, tokenB);
   const publicClient = usePublicClient();
   
-  // Get token addresses for fetching decimals
-  const tokenAAddr: Address | undefined = typeof tokenA === 'string' && isAddress(tokenA)
-    ? tokenA
-    : typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
-    ? TOKENS[tokenA as TokenSymbol].address
-    : undefined;
-    
-  const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
-    ? tokenB
-    : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
-    ? TOKENS[tokenB as TokenSymbol].address
-    : undefined;
+  // CRITICAL: Read actual token addresses from pool (pool stores tokens sorted by address)
+  // Pool's tokenA = lower address, tokenB = higher address
+  const { data: poolTokenA } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'tokenA',
+    query: { enabled: !!poolAddress },
+  });
 
-  // Get token decimals (prefer from TOKENS map, otherwise fetch from contract)
-  const tokenADecimals = typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
-    ? TOKENS[tokenA as TokenSymbol].decimals
-    : 18;
-    
-  const tokenBDecimals = typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
-    ? TOKENS[tokenB as TokenSymbol].decimals
-    : 18;
+  const { data: poolTokenB } = useReadContract({
+    address: poolAddress || undefined,
+    abi: POOL_ABI,
+    functionName: 'tokenB',
+    query: { enabled: !!poolAddress },
+  });
 
-  // Fetch decimals from contracts if not in TOKENS map
+  // Fetch decimals for the ACTUAL pool tokens (not function parameters!)
   const { data: tokenADecimalsRaw } = useReadContract({
-    address: tokenAAddr,
+    address: poolTokenA as Address | undefined,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!tokenAAddr && !(typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]) },
+    query: { enabled: !!poolTokenA },
   });
 
   const { data: tokenBDecimalsRaw } = useReadContract({
-    address: tokenBAddr,
+    address: poolTokenB as Address | undefined,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!tokenBAddr && !(typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]) },
+    query: { enabled: !!poolTokenB },
   });
 
-  // Use fetched decimals if available, otherwise use default
-  const finalTokenADecimals = tokenADecimalsRaw ? Number(tokenADecimalsRaw) : tokenADecimals;
-  const finalTokenBDecimals = tokenBDecimalsRaw ? Number(tokenBDecimalsRaw) : tokenBDecimals;
+  // Get decimals from TOKENS map if available, otherwise use fetched or default to 18
+  const poolTokenALower = poolTokenA ? (poolTokenA as string).toLowerCase() : '';
+  const poolTokenBLower = poolTokenB ? (poolTokenB as string).toLowerCase() : '';
   
-  const { data: reserveA } = useReadContract({
-    address: poolAddress || undefined,
-    abi: POOL_ABI,
-    functionName: 'reserveA',
-    query: { enabled: !!poolAddress },
+  // Find token info from TOKENS map - MUST match exactly including case normalization
+  const poolTokenAInfo = Object.values(TOKENS).find(t => {
+    const tokenAddrLower = t.address.toLowerCase();
+    return tokenAddrLower === poolTokenALower;
+  });
+  const poolTokenBInfo = Object.values(TOKENS).find(t => {
+    const tokenAddrLower = t.address.toLowerCase();
+    return tokenAddrLower === poolTokenBLower;
+  });
+  
+  // Priority: 1) TOKENS map, 2) Fetched from contract, 3) Default 18
+  // BUT: If we fetched decimals from contract, use them as fallback
+  const finalTokenADecimals = poolTokenAInfo?.decimals ?? (tokenADecimalsRaw ? Number(tokenADecimalsRaw) : 18);
+  const finalTokenBDecimals = poolTokenBInfo?.decimals ?? (tokenBDecimalsRaw ? Number(tokenBDecimalsRaw) : 18);
+  
+  // CRITICAL: Read ACTUAL token balances from ERC20 contracts (same as indexer does)
+  // This is the source of truth - balances are always accurate!
+  // Stored reserves might be stale if _update() wasn't called
+  const { data: balanceA } = useReadContract({
+    address: poolTokenA as Address | undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: poolAddress ? [poolAddress] : undefined,
+    query: { enabled: !!poolAddress && !!poolTokenA },
   });
 
-  const { data: reserveB } = useReadContract({
-    address: poolAddress || undefined,
-    abi: POOL_ABI,
-    functionName: 'reserveB',
-    query: { enabled: !!poolAddress },
+  const { data: balanceB } = useReadContract({
+    address: poolTokenB as Address | undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: poolAddress ? [poolAddress] : undefined,
+    query: { enabled: !!poolAddress && !!poolTokenB },
   });
 
   return {
-    reserveA: reserveA ? formatUnits(reserveA, finalTokenADecimals) : '0',
-    reserveB: reserveB ? formatUnits(reserveB, finalTokenBDecimals) : '0',
+    reserveA: balanceA ? formatUnits(balanceA, finalTokenADecimals) : '0',
+    reserveB: balanceB ? formatUnits(balanceB, finalTokenBDecimals) : '0',
     poolAddress,
   };
 }
 
 export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | TokenSymbol, amountIn: string) {
   const poolAddress = usePoolAddress(tokenA, tokenB);
+  
+  // Get actual reserves (from ERC20 balances, not stale pool state)
+  const poolReserves = usePoolReserves(tokenA, tokenB);
   
   // Get token decimals
   const tokenAAddr: Address | undefined = typeof tokenA === 'string' && isAddress(tokenA)
@@ -399,36 +415,55 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     ? TOKENS[tokenA as TokenSymbol].decimals
     : 18;
   
-  const amountInWei = amountIn && !isNaN(parseFloat(amountIn)) && parseFloat(amountIn) > 0
-    ? parseUnits(amountIn, tokenADecimals)
-    : undefined;
+  const amountInValue = amountIn && !isNaN(parseFloat(amountIn)) && parseFloat(amountIn) > 0
+    ? parseFloat(amountIn)
+    : 0;
 
   // Determine if we're swapping tokenA (true) or tokenB (false)
-  // Compare actual token addresses to determine order (same as pool stores them)
   const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
     ? tokenB
     : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
     ? TOKENS[tokenB as TokenSymbol].address
     : undefined;
     
-  // Compare addresses to determine if tokenA comes first in the pool
   const isTokenAFirst = tokenAAddr && tokenBAddr
     ? tokenAAddr.toLowerCase() < tokenBAddr.toLowerCase()
     : false;
 
-  const { data: amountOut } = useReadContract({
-    address: poolAddress || undefined,
-    abi: POOL_ABI,
-    functionName: 'getAmountOut',
-    args: amountInWei ? [amountInWei, isTokenAFirst] : undefined,
-    query: { enabled: !!poolAddress && !!amountInWei },
-  });
-
+  // Get decimals for output token
   const tokenBDecimals = typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
     ? TOKENS[tokenB as TokenSymbol].decimals
     : 18;
+
+  // Calculate swap output using actual reserves (Uniswap V2 formula)
+  // Formula: amountOut = (amountIn * 9970 * reserveOut) / (reserveIn * 10000 + amountIn * 9970)
+  const calculatedAmountOut = useMemo(() => {
+    if (!amountInValue || amountInValue <= 0 || !poolReserves.reserveA || !poolReserves.reserveB) {
+      return '0';
+    }
+
+    const reserveA = parseFloat(poolReserves.reserveA);
+    const reserveB = parseFloat(poolReserves.reserveB);
     
-  return amountOut ? formatUnits(amountOut, tokenBDecimals) : '0';
+    if (reserveA <= 0 || reserveB <= 0) {
+      return '0';
+    }
+
+    // Determine which reserve is input and which is output
+    const reserveIn = isTokenAFirst ? reserveA : reserveB;
+    const reserveOut = isTokenAFirst ? reserveB : reserveA;
+
+    // Uniswap V2 formula with 0.3% fee (30 bps = 9970/10000)
+    const FEE_BPS = 30; // 0.3%
+    const amountInWithFee = amountInValue * (10000 - FEE_BPS); // 9970
+    const numerator = amountInWithFee * reserveOut;
+    const denominator = (reserveIn * 10000) + amountInWithFee;
+    const amountOut = numerator / denominator;
+
+    return amountOut.toFixed(18); // Return as string with enough precision
+  }, [amountInValue, poolReserves.reserveA, poolReserves.reserveB, isTokenAFirst, tokenA, tokenB, poolAddress]);
+
+  return calculatedAmountOut;
 }
 
 export function useLPBalance(tokenA: Address | TokenSymbol, tokenB: Address | TokenSymbol) {

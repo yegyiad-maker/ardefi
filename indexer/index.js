@@ -536,6 +536,61 @@ async function index() {
 }
 
 /**
+ * Store price history snapshot for a pool
+ * Only stores if it's been at least 1 minute since last snapshot (to avoid excessive writes)
+ */
+async function storePriceHistory(poolAddress, tokenA, tokenB, tokenAInfo, tokenBInfo, reserveA, reserveB) {
+  if (!supabase) return;
+
+  try {
+    // Calculate prices
+    const reserveAFormatted = Number(reserveA) / (10 ** tokenAInfo.decimals);
+    const reserveBFormatted = Number(reserveB) / (10 ** tokenBInfo.decimals);
+
+    // Price of tokenA in terms of tokenB (how many tokenB per tokenA)
+    const priceAperB = reserveBFormatted / reserveAFormatted;
+    // Price of tokenB in terms of tokenA (how many tokenA per tokenB)
+    const priceBperA = reserveAFormatted / reserveBFormatted;
+
+    // Get current timestamp
+    const now = new Date();
+
+    // Check last snapshot time for this pool (to throttle writes)
+    const { data: lastSnapshot } = await supabase
+      .from('price_history')
+      .select('timestamp')
+      .eq('pool_address', poolAddress.toLowerCase())
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+
+    // Only store if last snapshot was more than 1 minute ago (or no previous snapshot)
+    if (!lastSnapshot || (now - new Date(lastSnapshot.timestamp)) > 60000) {
+      const { error } = await supabase.from('price_history').insert({
+        pool_address: poolAddress.toLowerCase(),
+        token_a: tokenA.toLowerCase(),
+        token_b: tokenB.toLowerCase(),
+        token_a_symbol: tokenAInfo.symbol,
+        token_b_symbol: tokenBInfo.symbol,
+        price_a_per_b: priceAperB,
+        price_b_per_a: priceBperA,
+        reserve_a: reserveA.toString(),
+        reserve_b: reserveB.toString(),
+        timestamp: now.toISOString(),
+      });
+
+      if (error && !error.message.includes('duplicate key')) {
+        console.error(`Error storing price history for ${poolAddress}:`, error);
+      }
+      // Silent success - don't spam logs for every price snapshot
+    }
+  } catch (error) {
+    // Silent fail - price history is not critical
+    console.error(`Error in storePriceHistory for ${poolAddress}:`, error);
+  }
+}
+
+/**
  * Fetch and store pool data in Supabase
  */
 async function storePoolData(pools) {
@@ -640,6 +695,17 @@ async function storePoolData(pools) {
             console.log(`✓ Updated pool ${poolAddress} (${tokenAInfo.symbol}/${tokenBInfo.symbol})`);
             console.log(`  Reserves: ${reserveAFormatted.toFixed(6)} ${tokenAInfo.symbol} / ${reserveBFormatted.toFixed(6)} ${tokenBInfo.symbol}`);
             console.log(`  TVL: $${totalLiquidity.toFixed(2)}`);
+            
+            // Store price history snapshot (for charts)
+            await storePriceHistory(
+              poolAddress,
+              tokenA,
+              tokenB,
+              tokenAInfo,
+              tokenBInfo,
+              reserveA,
+              reserveB
+            );
           }
         } else {
           // Remove pool from Supabase if it has no liquidity

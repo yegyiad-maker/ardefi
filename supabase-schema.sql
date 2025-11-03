@@ -69,3 +69,34 @@ CREATE TRIGGER update_pools_last_updated
   FOR EACH ROW 
   EXECUTE FUNCTION update_last_updated_column();
 
+-- Table for price history (for charts)
+-- Stores periodic price snapshots for each pool/token pair
+CREATE TABLE IF NOT EXISTS price_history (
+  id BIGSERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  token_a TEXT NOT NULL,
+  token_b TEXT NOT NULL,
+  token_a_symbol TEXT,
+  token_b_symbol TEXT,
+  -- Price of tokenA in terms of tokenB (tokenB/tokenA ratio)
+  price_a_per_b NUMERIC(30, 18) NOT NULL,
+  -- Price of tokenB in terms of tokenA (tokenA/tokenB ratio)  
+  price_b_per_a NUMERIC(30, 18) NOT NULL,
+  -- Reserve amounts at this snapshot
+  reserve_a TEXT NOT NULL,
+  reserve_b TEXT NOT NULL,
+  -- Timestamp for this price snapshot
+  timestamp TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- Unique constraint to prevent duplicate snapshots at same time
+  UNIQUE(pool_address, timestamp)
+);
+
+-- Indexes for price_history table (optimized for chart queries)
+CREATE INDEX IF NOT EXISTS idx_price_history_pool_address ON price_history(pool_address);
+CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_token_a ON price_history(token_a);
+CREATE INDEX IF NOT EXISTS idx_price_history_token_b ON price_history(token_b);
+-- Composite index for most common query: pool + timestamp range
+CREATE INDEX IF NOT EXISTS idx_price_history_pool_timestamp ON price_history(pool_address, timestamp DESC);
+

@@ -8,6 +8,7 @@ import { parseUnits, type Address } from 'viem';
 import { getPoolAddress } from '../hooks/useDEX';
 import TokenLogo from './TokenLogo';
 import { addArcTestnetToWallet } from '../utils/addArcTestnet';
+import PriceChart from './PriceChart';
 
 const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
 
@@ -15,13 +16,14 @@ export default function Swap() {
   const { isConnected, address, chainId } = useAccount();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
-  const [fromToken, setFromToken] = useState<TokenSymbol>('RAC');
-  const [toToken, setToToken] = useState<TokenSymbol>('RACD');
+  const [fromToken, setFromToken] = useState<TokenSymbol>('USDC');
+  const [toToken, setToToken] = useState<TokenSymbol>('RACA');
   const [slippage, setSlippage] = useState('0.5');
   const [showSettings, setShowSettings] = useState(false);
   const [showTokenSelector, setShowTokenSelector] = useState<'from' | 'to' | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [isCalculatingOutput, setIsCalculatingOutput] = useState(false);
+  const [showLiquidityInfo, setShowLiquidityInfo] = useState(false);
 
   const { swap, approveForSwap, isPending, isConfirming, isSuccess, error, hash } = useDEX();
   const fromBalance = useTokenBalance(fromToken);
@@ -121,18 +123,22 @@ export default function Swap() {
     }
   };
 
-  // Close token selector when clicking outside
+  // Close token selector and liquidity info when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (showTokenSelector) {
         setShowTokenSelector(null);
       }
+      // Close liquidity info on outside click (mobile)
+      if (showLiquidityInfo && window.innerWidth < 768) {
+        setShowLiquidityInfo(false);
+      }
     };
-    if (showTokenSelector) {
+    if (showTokenSelector || showLiquidityInfo) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [showTokenSelector]);
+  }, [showTokenSelector, showLiquidityInfo]);
 
   // Get pool reserves for price calculations
   const poolReserves = usePoolReserves(fromToken, toToken);
@@ -244,7 +250,6 @@ export default function Swap() {
             throw new Error('Approval incomplete');
           }
         } catch (err: any) {
-          console.error('Error proceeding to swap:', err);
           setErrorMessage(formatSwapError(err));
           setSwapStep('none');
           setShowProgressModal(false);
@@ -361,7 +366,6 @@ export default function Swap() {
         // If we still need to use wagmi's switchChain, wait a moment first
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error: any) {
-        console.error('Error adding/switching to Arc Testnet:', error);
         const errorMsg = error.message || 'Failed to add Arc Testnet to wallet. Please add it manually in MetaMask settings.';
         setErrorMessage(errorMsg);
       } finally {
@@ -412,7 +416,6 @@ export default function Swap() {
         await swap(fromToken, toToken, fromAmount);
       }
     } catch (err: any) {
-      console.error('Swap error:', err);
       const errorMsg = formatSwapError(err);
       setErrorMessage(errorMsg);
       setShowProgressModal(false);
@@ -442,22 +445,24 @@ export default function Swap() {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4">
-      <motion.div
-        className="bg-white rounded-3xl p-6 md:p-8 border border-orange-200 shadow-xl relative"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        style={{
-          boxShadow: `
-            0 0 20px rgba(251, 146, 60, 0.15),
-            0 0 40px rgba(251, 146, 60, 0.1),
-            0 4px 6px -1px rgba(0, 0, 0, 0.1),
-            0 2px 4px -1px rgba(0, 0, 0, 0.06),
-            inset 0 1px 0 rgba(255, 255, 255, 0.9)
-          `
-        }}
-      >
+    <div className="w-full max-w-7xl mx-auto px-4">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Swap Modal - Left Side */}
+        <motion.div
+          className="bg-white rounded-3xl p-6 md:p-8 border border-orange-200 shadow-xl relative flex-1 lg:max-w-2xl"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          style={{
+            boxShadow: `
+              0 0 20px rgba(251, 146, 60, 0.15),
+              0 0 40px rgba(251, 146, 60, 0.1),
+              0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9)
+            `
+          }}
+        >
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4 relative z-10">
@@ -812,6 +817,66 @@ export default function Swap() {
             : `Swap ${fromToken} for ${toToken}`}
         </motion.button>
 
+        {/* Liquidity Info Icon with Tooltip */}
+        <div className="mt-4 flex items-center justify-center relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowLiquidityInfo(!showLiquidityInfo);
+            }}
+            className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors relative z-10 md:group"
+            onMouseEnter={() => {
+              setShowLiquidityInfo(true);
+            }}
+            onMouseLeave={() => {
+              // Only auto-hide on desktop hover leave, not on mobile
+              if (window.matchMedia('(min-width: 768px)').matches) {
+                setShowLiquidityInfo(false);
+              }
+            }}
+          >
+            <Info className="w-4 h-4" />
+            <span className="text-xs font-medium">About liquidity and price impact</span>
+          </button>
+          
+          {/* Tooltip/Popover */}
+          <AnimatePresence>
+            {showLiquidityInfo && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-80 sm:w-96 z-50 pointer-events-auto md:group-hover:block"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 shadow-xl">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-yellow-800 mb-2">Low Liquidity Notice</p>
+                      <p className="text-xs text-yellow-700 leading-relaxed">
+                        Pools may have limited liquidity, which could result in higher price impact and price volatility during swaps. 
+                        Please review the price impact before confirming your transaction. Consider adding liquidity to help improve pool stability.
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowLiquidityInfo(false);
+                      }}
+                      className="text-yellow-600 hover:text-yellow-800 transition-colors flex-shrink-0 md:hidden"
+                      aria-label="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* Review Modal */}
         <AnimatePresence>
           {showReviewModal && (
@@ -1084,7 +1149,32 @@ export default function Swap() {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+        </motion.div>
+
+        {/* Price Chart - Right Side */}
+        <motion.div
+          className="bg-white rounded-3xl p-6 border border-orange-200 shadow-xl flex-1 lg:max-w-md"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          style={{
+            boxShadow: `
+              0 0 20px rgba(251, 146, 60, 0.15),
+              0 0 40px rgba(251, 146, 60, 0.1),
+              0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9)
+            `
+          }}
+        >
+          <PriceChart
+            fromToken={fromToken}
+            toToken={toToken}
+            poolAddress={poolAddress}
+            height={400}
+          />
+        </motion.div>
+      </div>
     </div>
   );
 }

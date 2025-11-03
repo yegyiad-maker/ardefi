@@ -738,7 +738,11 @@ export default function Pools() {
                   <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
                 ) : tvlHistory.length > 0 ? (
                   <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={tvlHistory.slice(-7)}>
+                    <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
+                      // Calculate cumulative volume for upward trend
+                      const cumulativeVolume = arr.slice(0, index + 1).reduce((sum, p) => sum + p.volume, 0);
+                      return { ...point, cumulativeVolume };
+                    })}>
                       <defs>
                         <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3}/>
@@ -747,11 +751,13 @@ export default function Pools() {
                       </defs>
                       <Area 
                         type="monotone" 
-                        dataKey="volume" 
+                        dataKey="cumulativeVolume" 
                         stroke="rgba(251, 146, 60, 1)" 
                         strokeWidth={2}
                         fill="url(#volumeGradient)"
                         dot={false}
+                        isAnimationActive={false}
+                        connectNulls={false}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -787,7 +793,11 @@ export default function Pools() {
                   <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
                 ) : tvlHistory.length > 0 ? (
                   <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={tvlHistory.slice(-7)}>
+                    <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
+                      // Calculate cumulative fees for upward trend
+                      const cumulativeFees = arr.slice(0, index + 1).reduce((sum, p) => sum + p.fees, 0);
+                      return { ...point, cumulativeFees };
+                    })}>
                       <defs>
                         <linearGradient id="feesGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3}/>
@@ -796,11 +806,13 @@ export default function Pools() {
                       </defs>
                       <Area 
                         type="monotone" 
-                        dataKey="fees" 
+                        dataKey="cumulativeFees" 
                         stroke="rgba(251, 146, 60, 1)" 
                         strokeWidth={2}
                         fill="url(#feesGradient)"
                         dot={false}
+                        isAnimationActive={false}
+                        connectNulls={false}
                       />
                     </AreaChart>
                   </ResponsiveContainer>

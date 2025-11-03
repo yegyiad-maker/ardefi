@@ -9,12 +9,22 @@ import Navigation, { TabType } from './components/Navigation';
 import Swap from './components/Swap';
 import Pools from './components/Pools';
 import CreatePool from './components/CreatePool';
+import MaintenancePage from './components/MaintenancePage';
 import { ArrowLeftRight, Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const queryClient = new QueryClient();
 
+// MAINTENANCE MODE: Controlled by environment variable VITE_MAINTENANCE_MODE
+// Set to "true" in .env to enable maintenance page, "false" or omit to go live
+const MAINTENANCE_MODE = import.meta.env.VITE_MAINTENANCE_MODE === 'true';
+
 function AppContent() {
+  // Show maintenance page if maintenance mode is enabled
+  if (MAINTENANCE_MODE) {
+    return <MaintenancePage />;
+  }
+
   const { address, isConnected } = useAccount();
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('bridge');

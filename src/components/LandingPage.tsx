@@ -95,16 +95,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-600 max-w-3xl mx-auto mb-6 sm:mb-8 px-4">
             Cross-chain bridge between Sepolia and Arc Testnet, plus DeFi tools exclusively on Arc Testnet
           </p>
-
-          <motion.button
-            onClick={onGetStarted}
-            className="group px-6 sm:px-8 py-3 sm:py-4 bg-orange-500 text-white rounded-xl font-bold text-base sm:text-lg shadow-lg hover:bg-orange-600 hover:shadow-2xl transition-all duration-300 inline-flex items-center gap-2"
-            whileHover={{ scale: 1.05, y: -2 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <span>Get Started</span>
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </motion.button>
         </motion.div>
 
         {/* Features Grid */}
@@ -139,6 +129,192 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             );
           })}
         </div>
+
+        {/* Token Exchange Animation - Rectangular Loop */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.6 }}
+          className="flex justify-center my-8 sm:my-12 md:my-16"
+        >
+          <div className="relative w-full max-w-xl h-40 sm:h-52 md:h-64">
+            {/* Rectangular path indicator */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 500 320">
+              <rect
+                x="30"
+                y="30"
+                width="440"
+                height="260"
+                rx="16"
+                fill="none"
+                stroke="rgba(251, 146, 60, 0.15)"
+                strokeWidth="2"
+                strokeDasharray="6 6"
+              />
+            </svg>
+
+            {/* Token 1: USDC - starts top-left, moves to top-right position */}
+            <motion.div
+              className="absolute"
+              style={{
+                left: '15px',
+                top: '15px',
+              }}
+              animate={{
+                x: [0, 'calc(100% - 30px)', 'calc(100% - 30px)', 0, 0],
+                y: [0, 0, 'calc(100% - 30px)', 'calc(100% - 30px)', 0],
+              }}
+              transition={{
+                duration: 6,
+                repeat: Infinity,
+                ease: 'linear',
+              }}
+            >
+              <motion.div
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white border-2 border-orange-200 shadow-lg flex items-center justify-center p-1.5"
+                style={{
+                  boxShadow: `
+                    inset 0 1px 2px rgba(255, 255, 255, 0.8),
+                    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(251, 146, 60, 0.2),
+                    0 2px 4px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <img src="/usdc.svg" alt="USDC" className="w-full h-full object-contain" />
+              </motion.div>
+            </motion.div>
+
+            {/* Token 2: SRAC - starts top-right, moves to bottom-right position (1.5s delay) */}
+            <motion.div
+              className="absolute"
+              style={{
+                right: '15px',
+                top: '15px',
+              }}
+              animate={{
+                x: [0, 0, 'calc(-100% + 30px)', 'calc(-100% + 30px)', 0],
+                y: [0, 'calc(100% - 30px)', 'calc(100% - 30px)', 0, 0],
+              }}
+              transition={{
+                duration: 6,
+                repeat: Infinity,
+                ease: 'linear',
+                delay: 1.5,
+              }}
+            >
+              <motion.div
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white border-2 border-emerald-200 shadow-lg flex items-center justify-center p-1.5"
+                style={{
+                  boxShadow: `
+                    inset 0 1px 2px rgba(255, 255, 255, 0.8),
+                    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(16, 185, 129, 0.2),
+                    0 2px 4px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <img src="/srac.png" alt="SRAC" className="w-full h-full object-contain" />
+              </motion.div>
+            </motion.div>
+
+            {/* Token 3: RACS - starts bottom-right, moves to bottom-left position (3s delay) */}
+            <motion.div
+              className="absolute"
+              style={{
+                right: '15px',
+                bottom: '15px',
+              }}
+              animate={{
+                x: [0, 'calc(-100% + 30px)', 'calc(-100% + 30px)', 0, 0],
+                y: [0, 0, 'calc(-100% + 30px)', 'calc(-100% + 30px)', 0],
+              }}
+              transition={{
+                duration: 6,
+                repeat: Infinity,
+                ease: 'linear',
+                delay: 3,
+              }}
+            >
+              <motion.div
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white border-2 border-orange-300 shadow-lg flex items-center justify-center p-1.5"
+                style={{
+                  boxShadow: `
+                    inset 0 1px 2px rgba(255, 255, 255, 0.8),
+                    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(251, 146, 60, 0.2),
+                    0 2px 4px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <img src="/racs.png" alt="RACS" className="w-full h-full object-contain" />
+              </motion.div>
+            </motion.div>
+
+            {/* Token 4: SACS - starts bottom-left, moves to top-left position (4.5s delay) */}
+            <motion.div
+              className="absolute"
+              style={{
+                left: '15px',
+                bottom: '15px',
+              }}
+              animate={{
+                x: [0, 0, 'calc(100% - 30px)', 'calc(100% - 30px)', 0],
+                y: [0, 'calc(-100% + 30px)', 'calc(-100% + 30px)', 0, 0],
+              }}
+              transition={{
+                duration: 6,
+                repeat: Infinity,
+                ease: 'linear',
+                delay: 4.5,
+              }}
+            >
+              <motion.div
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white border-2 border-emerald-300 shadow-lg flex items-center justify-center p-1.5"
+                style={{
+                  boxShadow: `
+                    inset 0 1px 2px rgba(255, 255, 255, 0.8),
+                    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(16, 185, 129, 0.2),
+                    0 2px 4px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <img src="/sacs.png" alt="SACS" className="w-full h-full object-contain" />
+              </motion.div>
+            </motion.div>
+
+            {/* Exchange arrows at midpoints */}
+            <motion.div
+              className="absolute top-1 left-1/2 -translate-x-1/2"
+              animate={{ x: [0, 4, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 opacity-70" />
+            </motion.div>
+            <motion.div
+              className="absolute top-1/2 right-1 -translate-y-1/2"
+              animate={{ y: [0, 4, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.25 }}
+            >
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 opacity-70 rotate-90" />
+            </motion.div>
+            <motion.div
+              className="absolute bottom-1 left-1/2 -translate-x-1/2"
+              animate={{ x: [0, -4, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+            >
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 opacity-70 rotate-180" />
+            </motion.div>
+            <motion.div
+              className="absolute top-1/2 left-1 -translate-y-1/2"
+              animate={{ y: [0, -4, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.75 }}
+            >
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 opacity-70 -rotate-90" />
+            </motion.div>
+          </div>
+        </motion.div>
 
         {/* Benefits Section */}
         <motion.div

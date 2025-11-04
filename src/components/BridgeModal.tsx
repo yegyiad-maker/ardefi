@@ -296,7 +296,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     if (currentChainId === sourceChainId) {
       // Use wagmi result when connected to source chain
       if (!sourceBalanceRaw || !sourceTokenInfo) return '0';
-      return formatUnits(sourceBalanceRaw, sourceTokenInfo.decimals);
+      return formatUnits(sourceBalanceRaw as bigint, sourceTokenInfo.decimals);
     } else {
       // Use manual fetch result when not connected to source chain
       return sourceBalanceManual;
@@ -612,9 +612,9 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   <div className="flex items-start space-x-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
                     <div className="text-sm text-yellow-800">
-                      <p className="font-medium">Switch to {sourceChainName}</p>
+                      <p className="font-medium">Auto-switch to {sourceChainName}</p>
                       <p className="text-xs mt-1">
-                        You'll need to switch to {sourceChainName} network to bridge tokens. We'll prompt you during the bridge process.
+                        Bridge Kit will automatically switch your network to {sourceChainName} when you start the bridge process. 
                       </p>
                     </div>
                   </div>

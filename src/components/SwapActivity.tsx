@@ -230,7 +230,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-hidden min-h-[600px]">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
@@ -347,6 +347,12 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
                   </motion.tr>
                 );
               })}
+              {/* Empty rows to maintain consistent height and prevent scrollbar flicker */}
+              {Array.from({ length: Math.max(0, EVENTS_PER_PAGE - paginatedEvents.length) }).map((_, idx) => (
+                <tr key={`empty-${idx}`} className="border-b border-gray-100" style={{ height: '60px' }}>
+                  <td colSpan={6}></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

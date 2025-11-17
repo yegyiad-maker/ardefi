@@ -1,32 +1,32 @@
 {
   "network": "arc-testnet",
   "chainId": 5042002,
-  "deployedAt": "2025-11-03T07:23:05.537Z",
-  "deployer": "0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6",
+  "deployedAt": "2025-11-17T07:44:47.122Z",
+  "deployer": "0x7eC8B59631cC954d1EE3D307bE67a250b507CA6C",
   "tokens": {
     "SRAC": {
       "name": "Simple RAC Token",
       "symbol": "SRAC",
-      "address": "0x49cd69442dB073E7b94B0124e316AB7C68b95988",
+      "address": "0xD7eAd62eb5156211369039f2CE648E0E0A591Ca4",
       "decimals": 18,
       "totalSupply": "10000000"
     },
     "RACS": {
       "name": "RAC Swap Token",
       "symbol": "RACS",
-      "address": "0x6E63e2cABECCe5c3A1c37b79A958a9542076A1e3",
+      "address": "0xC4797Bd98998ea79596852A5c0fEa1Ff0b192776",
       "decimals": 18,
       "totalSupply": "10000000"
     },
     "SACS": {
       "name": "Swap ACR Token",
       "symbol": "SACS",
-      "address": "0x63F856fBAB3535174bFaFD6EFd720C634d6FD458",
+      "address": "0xcaD3f0Cd571585787b5486AA54202783b576eDA1",
       "decimals": 18,
       "totalSupply": "10000000"
     }
   },
   "factory": {
-    "address": "0x34A0b64a88BBd4Bf6Acba8a0Ff8F27c8aDD67E9C"
+    "address": "0x0c09aA6718d2dAB62E83008948cfD4d1b40CEF0e"
   }
 }
